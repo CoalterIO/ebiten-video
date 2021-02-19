@@ -1,8 +1,6 @@
 package video
 
 import (
-	"image"
-
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 )
@@ -12,9 +10,10 @@ type SequenceNoAudio struct {
 	location           string
 	prefix             string
 	currentFrameImage  *ebiten.Image
+	lastFrameNumber    int
 	currentFrameNumber int
 	totalFrames        int
-	frames             []image.Image
+	frames             []*ebiten.Image
 	partialFrame       float64
 }
 
@@ -26,17 +25,8 @@ type SequenceWithAudio struct {
 }
 
 func (s *SequenceNoAudio) drawFrame(screen *ebiten.Image) {
-	if s.currentFrameNumber > s.totalFrames-1 {
-		return
+	screen.DrawImage(s.frames[s.lastFrameNumber], &ebiten.DrawImageOptions{})
+	if s.lastFrameNumber != s.currentFrameNumber {
+		s.lastFrameNumber = s.currentFrameNumber
 	}
-	i := s.frames[s.currentFrameNumber]
-
-	r1 := screen.Bounds()
-	r2 := i.Bounds()
-	if r1.Size() != r2.Size() {
-		i = scaleImage(r1, i)
-	}
-
-	s.currentFrameImage = ebiten.NewImageFromImage(i)
-	screen.DrawImage(s.currentFrameImage, &ebiten.DrawImageOptions{})
 }

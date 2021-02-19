@@ -3,6 +3,7 @@ package video
 import (
 	"fmt"
 	"image"
+	_ "image/png"
 	"math"
 	"os"
 	"strconv"
@@ -17,38 +18,48 @@ const (
 )
 
 // NewSequence creates a new sequence struct
-func NewSequence(location string, prefix string, totalFrames int) *SequenceNoAudio {
+func NewSequence(location string, prefix string, totalFrames int, screenWidth int, screenHeight int) *SequenceNoAudio {
 	numZeroes := int(math.Log10(float64(totalFrames)))
+	frames := getAllImages(location, totalFrames, numZeroes, prefix, screenWidth, screenHeight)
 
 	return &SequenceNoAudio{
 		location:           location,
 		totalFrames:        totalFrames,
-		frames:             getAllImages(location, totalFrames, numZeroes, prefix),
-		currentFrameNumber: 0,
+		frames:             frames,
+		currentFrameNumber: 1,
+		lastFrameNumber:    0,
 		partialFrame:       0.0,
-		currentFrameImage:  &ebiten.Image{},
+		currentFrameImage:  frames[0],
 	}
 }
 
 // UpdateSequence updates the info in the png sequence so you can draw it with DrawSequence
 func UpdateSequence(sequence *SequenceNoAudio, fps int, tps int) {
-	sequence.partialFrame += (float64(tps) / float64(fps))
-	if math.Floor(sequence.partialFrame) > float64(sequence.currentFrameNumber) {
+	if sequence.currentFrameNumber >= sequence.totalFrames {
+		return
+	}
+	sequence.partialFrame += (float64(fps) / float64(tps))
+	if sequence.partialFrame >= 1.0 {
+		sequence.partialFrame = 0
 		sequence.currentFrameNumber++
 	}
 }
 
 // DrawSequence draws the current frame of the given sequence
 func DrawSequence(sequence *SequenceNoAudio, screen *ebiten.Image) {
+	if sequence.currentFrameNumber >= sequence.totalFrames {
+		return
+	}
 	sequence.drawFrame(screen)
 }
 
-func scaleImage(r image.Rectangle, i image.Image) image.Image {
-	return resize.Resize(uint(r.Dx()), uint(r.Dy()), i, resize.Lanczos3)
+// ScaleImage scales an image to x by y
+func ScaleImage(x int, y int, i image.Image) image.Image {
+	return resize.Resize(uint(x), uint(y), i, resize.Lanczos3)
 }
 
-func getAllImages(location string, total int, numZeroes int, prefix string) []image.Image {
-	b := make([]image.Image, total)
+func getAllImages(location string, total int, numZeroes int, prefix string, x int, y int) []*ebiten.Image {
+	b := make([]*ebiten.Image, total)
 	numZeroes = int(math.Floor(float64(numZeroes)) + 1)
 	var filename, num string
 	var z int
@@ -64,16 +75,17 @@ func getAllImages(location string, total int, numZeroes int, prefix string) []im
 		file, err := os.Open(filename)
 		if err != nil {
 			fmt.Println(err)
-			fmt.Println("got to line 67")
 			os.Exit(1)
 		}
 
-		b[i], _, err = image.Decode(file)
+		img, _, err := image.Decode(file)
+		img = ScaleImage(x, y, img)
 		if err != nil {
 			fmt.Println(err)
-			fmt.Println("got to line 74")
 			os.Exit(1)
 		}
+		b[i] = ebiten.NewImageFromImage(img)
 	}
+
 	return b
 }
