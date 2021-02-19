@@ -1,11 +1,11 @@
 package video
 
 import (
-	"fmt"
+	"embed"
 	"image"
 	_ "image/png"
+	"log"
 	"math"
-	"os"
 	"strconv"
 	"strings"
 
@@ -18,12 +18,15 @@ const (
 )
 
 // NewSequence creates a new sequence struct
-func NewSequence(location string, prefix string, totalFrames int, screenWidth int, screenHeight int) *SequenceNoAudio {
+// screenwidth/height is the rectangle the video is being drawn in; used to scale
+// totalframes is the total amount of frames in the video
+// prefix is the prefix for the video, used in both the folder and filename ie. prefix video, video/video001.png
+// filesystem is the filesystem containing the folder with the png sequence
+func NewSequence(prefix string, totalFrames int, screenWidth int, screenHeight int, filesystem embed.FS) *SequenceNoAudio {
 	numZeroes := int(math.Log10(float64(totalFrames)))
-	frames := getAllImages(location, totalFrames, numZeroes, prefix, screenWidth, screenHeight)
+	frames := getAllImages(totalFrames, numZeroes, prefix, screenWidth, screenHeight, filesystem)
 
 	return &SequenceNoAudio{
-		location:           location,
 		totalFrames:        totalFrames,
 		frames:             frames,
 		currentFrameNumber: 1,
@@ -58,7 +61,8 @@ func ScaleImage(x int, y int, i image.Image) image.Image {
 	return resize.Resize(uint(x), uint(y), i, resize.Lanczos3)
 }
 
-func getAllImages(location string, total int, numZeroes int, prefix string, x int, y int) []*ebiten.Image {
+// generates all of the ebiten images needed for the video
+func getAllImages(total int, numZeroes int, prefix string, x int, y int, filesystem embed.FS) []*ebiten.Image {
 	b := make([]*ebiten.Image, total)
 	numZeroes = int(math.Floor(float64(numZeroes)) + 1)
 	var filename, num string
@@ -71,18 +75,16 @@ func getAllImages(location string, total int, numZeroes int, prefix string, x in
 			z = numZeroes - 1
 		}
 		num = strings.Repeat(zero, z)
-		filename = location + "/" + prefix + num + strconv.Itoa(i) + ".png"
-		file, err := os.Open(filename)
+		filename = prefix + "/" + prefix + num + strconv.Itoa(i) + ".png"
+		file, err := filesystem.Open(filename)
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+			log.Fatal(err)
 		}
 
 		img, _, err := image.Decode(file)
 		img = ScaleImage(x, y, img)
 		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
+			log.Fatal(err)
 		}
 		b[i] = ebiten.NewImageFromImage(img)
 	}
