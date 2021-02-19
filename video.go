@@ -3,7 +3,6 @@ package video
 import (
 	"fmt"
 	"image"
-	"io/ioutil"
 	"math"
 	"os"
 	"strconv"
@@ -48,8 +47,8 @@ func scaleImage(r image.Rectangle, i image.Image) image.Image {
 	return resize.Resize(uint(r.Dx()), uint(r.Dy()), i, resize.Lanczos3)
 }
 
-func getAllImages(location string, total int, numZeroes int, prefix string) [][]byte {
-	b := make([][]byte, total)
+func getAllImages(location string, total int, numZeroes int, prefix string) []image.Image {
+	b := make([]image.Image, total)
 	numZeroes = int(math.Floor(float64(numZeroes)) + 1)
 	var filename, num string
 	var z int
@@ -62,12 +61,19 @@ func getAllImages(location string, total int, numZeroes int, prefix string) [][]
 		}
 		num = strings.Repeat(zero, z)
 		filename = location + "/" + prefix + num + strconv.Itoa(i) + ".png"
-		img, err := ioutil.ReadFile(filename)
+		file, err := os.Open(filename)
 		if err != nil {
 			fmt.Println(err)
+			fmt.Println("got to line 67")
 			os.Exit(1)
 		}
-		b[i] = img
+
+		b[i], _, err = image.Decode(file)
+		if err != nil {
+			fmt.Println(err)
+			fmt.Println("got to line 74")
+			os.Exit(1)
+		}
 	}
 	return b
 }

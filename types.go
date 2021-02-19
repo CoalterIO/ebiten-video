@@ -1,10 +1,7 @@
 package video
 
 import (
-	"bytes"
-	"fmt"
 	"image"
-	"os"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
@@ -17,7 +14,7 @@ type SequenceNoAudio struct {
 	currentFrameImage  *ebiten.Image
 	currentFrameNumber int
 	totalFrames        int
-	frames             [][]byte
+	frames             []image.Image
 	partialFrame       float64
 }
 
@@ -32,11 +29,7 @@ func (s *SequenceNoAudio) drawFrame(screen *ebiten.Image) {
 	if s.currentFrameNumber > s.totalFrames-1 {
 		return
 	}
-	i, _, err := image.Decode(bytes.NewReader(s.frames[s.currentFrameNumber]))
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	i := s.frames[s.currentFrameNumber]
 
 	r1 := screen.Bounds()
 	r2 := i.Bounds()
