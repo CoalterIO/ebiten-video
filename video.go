@@ -2,6 +2,7 @@ package video
 
 import (
 	"embed"
+	"fmt"
 	"image"
 	_ "image/png"
 	"log"
@@ -33,6 +34,7 @@ func NewSequence(prefix string, totalFrames int, screenWidth int, screenHeight i
 		lastFrameNumber:    0,
 		partialFrame:       0.0,
 		currentFrameImage:  frames[0],
+		IsFinished:         false,
 	}
 }
 
@@ -51,6 +53,7 @@ func UpdateSequence(sequence *SequenceNoAudio, fps int, tps int) {
 // DrawSequence draws the current frame of the given sequence
 func DrawSequence(sequence *SequenceNoAudio, screen *ebiten.Image) {
 	if sequence.currentFrameNumber >= sequence.totalFrames {
+		sequence.IsFinished = true
 		return
 	}
 	sequence.drawFrame(screen)
@@ -87,6 +90,8 @@ func getAllImages(total int, numZeroes int, prefix string, x int, y int, filesys
 			log.Fatal(err)
 		}
 		b[i] = ebiten.NewImageFromImage(img)
+		file.Close()
+		fmt.Println("file " + strconv.Itoa(i) + " done")
 	}
 
 	return b
