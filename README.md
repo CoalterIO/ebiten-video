@@ -25,7 +25,7 @@ const (
 var filesystem embed.FS
 ```
 
--thirdly, initialize the sequence AFTER the game begins running (if you initialize in init() or main() then an opengl error might occur)
+-thirdly, initialize the sequence
 ```go
 const (
 	x = 1280 //screen width
