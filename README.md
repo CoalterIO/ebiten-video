@@ -74,5 +74,6 @@ you can run the initialization as a goroutine if you need to do something else w
 
 # TODO
 sound
+
 video scaling
 
