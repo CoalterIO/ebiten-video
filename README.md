@@ -12,7 +12,7 @@ this library requires go 1.16 (for embed)
 -first, make sure you have your png sequence in a folder where the folder name is the same as the png prefix
 ie. video/video001.png
 
--secondly, add the local path to the png sequence
+-secondly, add the local path to the png sequence (ie. video/video001.png)
 ```go
 const filename = "video"
 ```
