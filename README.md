@@ -46,8 +46,9 @@ func main() {
 
 func initializeVideo() {
 	sequence, err = video.NewSequenceFromFolder(prefix, location, totalFrames, x, y)
-	// Or, if using th embedded filesystem
-	// sequence, err = video.NewSequenceFromFS(prefix, content, 436, x, y)
+	// Or, if using the embedded filesystem
+	// sequence, err = video.NewSequenceFromFS(prefix, content, totalFrames, x, y)
+	// handle error...
 }
 ```
 
