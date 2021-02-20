@@ -14,7 +14,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/nfnt/resize"
 )
 
 const (
@@ -89,9 +88,14 @@ func DrawSequence(sequence *SequenceNoAudio, screen *ebiten.Image) {
 	}
 }
 
-// ScaleImage scales an image to x by y
-func ScaleImage(x int, y int, i image.Image) image.Image {
-	return resize.Resize(uint(x), uint(y), i, resize.Lanczos3)
+func scaleImage(xin, xout, yin, yout int) *ebiten.DrawImageOptions {
+	var (
+		xScale = float64(xout) / float64(xin)
+		yScale = float64(yout) / float64(yin)
+		o      = &ebiten.DrawImageOptions{}
+	)
+	o.GeoM.Scale(xScale, yScale)
+	return o
 }
 
 // exists returns whether the given file or directory exists
@@ -107,14 +111,15 @@ func exists(path string) (bool, error) {
 }
 
 // generates all of the ebiten images needed for the video
-func getAllImagesFromFolder(total int, numZeroes int, prefix string, location string, x int, y int) <-chan *ebiten.Image {
-	frameBuffer := make(chan *ebiten.Image, frameBufferSize)
+func getAllImagesFromFolder(total int, numZeroes int, prefix string, location string, x int, y int) <-chan *imageWithOptions {
+	frameBuffer := make(chan *imageWithOptions, frameBufferSize)
 	numZeroes = int(math.Floor(float64(numZeroes)) + 1)
 	var filename, num string
 	var (
 		z   int
 		err error
 		img *ebiten.Image
+		o   *ebiten.DrawImageOptions
 	)
 
 	go func() {
@@ -131,7 +136,16 @@ func getAllImagesFromFolder(total int, numZeroes int, prefix string, location st
 			if err != nil {
 				log.Fatal(err)
 			}
-			frameBuffer <- img
+			if img.Bounds().Dx() != x || img.Bounds().Dy() != y {
+				o = scaleImage(img.Bounds().Dx(), x, img.Bounds().Dy(), y)
+			} else {
+				o = &ebiten.DrawImageOptions{}
+			}
+			s := &imageWithOptions{
+				i: img,
+				o: o,
+			}
+			frameBuffer <- s
 			fmt.Println("file " + strconv.Itoa(i) + " done")
 		}
 
@@ -148,8 +162,8 @@ func getAllImagesFromFolder(total int, numZeroes int, prefix string, location st
 	return frameBuffer
 }
 
-func getAllImagesFromFS(total int, numZeroes int, prefix string, filesystem embed.FS, x int, y int) <-chan *ebiten.Image {
-	frameBuffer := make(chan *ebiten.Image, frameBufferSize)
+func getAllImagesFromFS(total int, numZeroes int, prefix string, filesystem embed.FS, x int, y int) <-chan *imageWithOptions {
+	frameBuffer := make(chan *imageWithOptions, frameBufferSize)
 	numZeroes = int(math.Floor(float64(numZeroes)) + 1)
 	var filename, num string
 	var (
@@ -157,6 +171,7 @@ func getAllImagesFromFS(total int, numZeroes int, prefix string, filesystem embe
 		err  error
 		i    image.Image
 		img  *ebiten.Image
+		o    *ebiten.DrawImageOptions
 		file fs.File
 	)
 
@@ -181,7 +196,16 @@ func getAllImagesFromFS(total int, numZeroes int, prefix string, filesystem embe
 			}
 
 			img = ebiten.NewImageFromImage(i)
-			frameBuffer <- img
+			if img.Bounds().Dx() != x || img.Bounds().Dy() != y {
+				o = scaleImage(img.Bounds().Dx(), x, img.Bounds().Dy(), y)
+			} else {
+				o = &ebiten.DrawImageOptions{}
+			}
+			s := &imageWithOptions{
+				i: img,
+				o: o,
+			}
+			frameBuffer <- s
 			fmt.Println("file " + strconv.Itoa(j) + " done")
 		}
 

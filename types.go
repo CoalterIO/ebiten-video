@@ -16,14 +16,19 @@ func (e *DirectoryDoesNotExistError) Error() string {
 	return fmt.Sprintf("Error: directory %v does not exist", e.Path)
 }
 
+type imageWithOptions struct {
+	i *ebiten.Image
+	o *ebiten.DrawImageOptions
+}
+
 // SequenceNoAudio represents a video struct without an audio file
 type SequenceNoAudio struct {
 	location           string
 	prefix             string
-	currentFrameImage  *ebiten.Image
+	currentFrameImage  *imageWithOptions
 	currentFrameNumber int
 	totalFrames        int
-	frames             <-chan *ebiten.Image
+	frames             <-chan *imageWithOptions
 	partialFrame       float64
 	IsFinished         bool
 }
@@ -36,7 +41,7 @@ type SequenceWithAudio struct {
 }
 
 func (s *SequenceNoAudio) drawFrame(screen *ebiten.Image) {
-	screen.DrawImage(s.currentFrameImage, &ebiten.DrawImageOptions{})
+	screen.DrawImage(s.currentFrameImage.i, s.currentFrameImage.o)
 }
 
 // func (s *SequenceNoAudio) ResetSequence() {
