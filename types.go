@@ -1,16 +1,26 @@
 package video
 
 import (
+	"fmt"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 )
+
+// DirectoryDoesNotExistError does what it says on the box
+type DirectoryDoesNotExistError struct {
+	Path string
+}
+
+func (e *DirectoryDoesNotExistError) Error() string {
+	return fmt.Sprintf("Error: directory %v does not exist", e.Path)
+}
 
 // SequenceNoAudio represents a video struct without an audio file
 type SequenceNoAudio struct {
 	location           string
 	prefix             string
 	currentFrameImage  *ebiten.Image
-	lastFrameNumber    int
 	currentFrameNumber int
 	totalFrames        int
 	frames             <-chan *ebiten.Image
@@ -27,9 +37,6 @@ type SequenceWithAudio struct {
 
 func (s *SequenceNoAudio) drawFrame(screen *ebiten.Image) {
 	screen.DrawImage(s.currentFrameImage, &ebiten.DrawImageOptions{})
-	if s.lastFrameNumber != s.currentFrameNumber {
-		s.lastFrameNumber = s.currentFrameNumber
-	}
 }
 
 // func (s *SequenceNoAudio) ResetSequence() {
