@@ -1,255 +1,193 @@
 package main
 
+/* Valgrind report summary
+==13531== LEAK SUMMARY:
+==13531==    definitely lost: 0 bytes in 0 blocks
+==13531==    indirectly lost: 0 bytes in 0 blocks
+==13531==      possibly lost: 1,440 bytes in 5 blocks
+==13531==    still reachable: 0 bytes in 0 blocks
+==13531==         suppressed: 0 bytes in 0 blocks
+*/
+
 import (
+	"flag"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"io"
 	"log"
 	"os"
-	"unsafe"
+	"time"
 
-	"github.com/giorgisio/goav/avcodec"
-	"github.com/giorgisio/goav/avformat"
-	"github.com/giorgisio/goav/avutil"
-	"github.com/giorgisio/goav/swscale"
-	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/3d0c/gmf"
 )
 
-const (
-	FrameBufferSize = 1024
-)
-
-var (
-	WindowWidth  int
-	WindowHeight int
-	view         *ebiten.Image
-	frameBuffer  <-chan *ebiten.Image
-)
-
-func getFrameRGBA(frame *avutil.Frame, width, height int) *ebiten.Image {
-	pix := []byte{}
-
-	for y := 0; y < height; y++ {
-		data0 := avutil.Data(frame)[0]
-		buf := make([]byte, width*4)
-		startPos := uintptr(unsafe.Pointer(data0)) +
-			uintptr(y)*uintptr(avutil.Linesize(frame)[0])
-
-		for i := 0; i < width*4; i++ {
-			element := *(*uint8)(unsafe.Pointer(startPos + uintptr(i)))
-			buf[i] = element
-		}
-
-		pix = append(pix, buf...)
-	}
-	s := ebiten.NewImage(width, height)
-	s.ReplacePixels(pix)
-	return s
-}
-
-func readVideoFrames(videoPath string) <-chan *ebiten.Image {
-	// Create a frame buffer.
-	frameBuffer := make(chan *ebiten.Image, FrameBufferSize)
-
-	go func() {
-		// Open a video file.
-		pFormatContext := avformat.AvformatAllocContext()
-
-		if avformat.AvformatOpenInput(&pFormatContext, videoPath, nil, nil) != 0 {
-			fmt.Printf("Unable to open file %s\n", videoPath)
-			os.Exit(1)
-		}
-
-		// Retrieve the stream information.
-		if pFormatContext.AvformatFindStreamInfo(nil) < 0 {
-			fmt.Println("Couldn't find stream information")
-			os.Exit(1)
-		}
-
-		// Dump information about the video to stderr.
-		pFormatContext.AvDumpFormat(0, videoPath, 0)
-
-		// Find the first video stream
-		for i := 0; i < int(pFormatContext.NbStreams()); i++ {
-			switch pFormatContext.Streams()[i].
-				CodecParameters().AvCodecGetType() {
-			case avformat.AVMEDIA_TYPE_VIDEO:
-
-				// Get a pointer to the codec context for the video stream
-				pCodecCtxOrig := pFormatContext.Streams()[i].Codec()
-				// Find the decoder for the video stream
-				pCodec := avcodec.AvcodecFindDecoder(avcodec.
-					CodecId(pCodecCtxOrig.GetCodecId()))
-
-				if pCodec == nil {
-					fmt.Println("Unsupported codec!")
-					os.Exit(1)
-				}
-
-				// Copy context
-				pCodecCtx := pCodec.AvcodecAllocContext3()
-
-				if pCodecCtx.AvcodecCopyContext((*avcodec.
-					Context)(unsafe.Pointer(pCodecCtxOrig))) != 0 {
-					fmt.Println("Couldn't copy codec context")
-					os.Exit(1)
-				}
-
-				// Open codec
-				if pCodecCtx.AvcodecOpen2(pCodec, nil) < 0 {
-					fmt.Println("Could not open codec")
-					os.Exit(1)
-				}
-
-				// Allocate video frame
-				pFrame := avutil.AvFrameAlloc()
-
-				// Allocate an AVFrame structure
-				pFrameRGB := avutil.AvFrameAlloc()
-
-				if pFrameRGB == nil {
-					fmt.Println("Unable to allocate RGB Frame")
-					os.Exit(1)
-				}
-
-				// Determine required buffer size and allocate buffer
-				numBytes := uintptr(avcodec.AvpictureGetSize(avcodec.PixelFormat(avcodec.AV_PIX_FMT_RGBA), pCodecCtx.Width(), pCodecCtx.Height()))
-				buffer := avutil.AvMalloc(numBytes)
-
-				// Assign appropriate parts of buffer to image planes in pFrameRGB
-				// Note that pFrameRGB is an AVFrame, but AVFrame is a superset
-				// of AVPicture
-				avp := (*avcodec.Picture)(unsafe.Pointer(pFrameRGB))
-				avp.AvpictureFill((*uint8)(buffer), avcodec.PixelFormat(avcodec.AV_PIX_FMT_RGBA), pCodecCtx.Width(), pCodecCtx.Height())
-
-				// initialize SWS context for software scaling
-				swsCtx := swscale.SwsGetcontext(
-					pCodecCtx.Width(),
-					pCodecCtx.Height(),
-					(swscale.PixelFormat)(pCodecCtx.PixFmt()),
-					pCodecCtx.Width(),
-					pCodecCtx.Height(),
-					swscale.PixelFormat(avcodec.AV_PIX_FMT_RGBA),
-					2, // SWS.BILINEAR
-					nil,
-					nil,
-					nil,
-				)
-
-				// Read frames and save first five frames to disk
-				packet := avcodec.AvPacketAlloc()
-
-				for pFormatContext.AvReadFrame(packet) >= 0 {
-					// Is this a packet from the video stream?
-					if packet.StreamIndex() == i {
-						// Decode video frame
-						response := pCodecCtx.AvcodecSendPacket(packet)
-
-						if response < 0 {
-							fmt.Printf("Error while sending a packet to the decoder: %s\n",
-								avutil.ErrorFromCode(response))
-						}
-
-						for response >= 0 {
-							response = pCodecCtx.AvcodecReceiveFrame(
-								(*avcodec.Frame)(unsafe.Pointer(pFrame)))
-
-							if response == avutil.AvErrorEAGAIN ||
-								response == avutil.AvErrorEOF {
-								break
-							} else if response < 0 {
-								//fmt.Printf("Error while receiving a frame from the decoder: %s\n",
-								//avutil.ErrorFromCode(response))
-
-								//return
-							}
-
-							// Convert the image from its native format to RGB
-							swscale.SwsScale2(swsCtx, avutil.Data(pFrame),
-								avutil.Linesize(pFrame), 0, pCodecCtx.Height(),
-								avutil.Data(pFrameRGB), avutil.Linesize(pFrameRGB))
-
-							// Save the frame to the frame buffer.
-							frame := getFrameRGBA(pFrameRGB, pCodecCtx.Width(), pCodecCtx.Height())
-							frameBuffer <- frame
-						}
-					}
-
-					// Free the packet that was allocated by av_read_frame
-					packet.AvFreePacket()
-				}
-
-				go func() {
-					for {
-						if len(frameBuffer) <= 0 {
-							close(frameBuffer)
-							break
-						}
-					}
-				}()
-
-				// Free the RGB image
-				avutil.AvFree(buffer)
-				avutil.AvFrameFree(pFrameRGB)
-
-				// Free the YUV frame
-				avutil.AvFrameFree(pFrame)
-
-				// Close the codecs
-				pCodecCtx.AvcodecClose()
-				(*avcodec.Context)(unsafe.Pointer(pCodecCtxOrig)).AvcodecClose()
-
-				// Close the video file
-				pFormatContext.AvformatCloseInput()
-
-				// Stop after saving frames of first video straem
-				break
-
-			default:
-				fmt.Println("Didn't find a video stream")
-				os.Exit(1)
-			}
-		}
-	}()
-
-	return frameBuffer
-}
-
-type Game struct{}
-
-func (g *Game) Update() error {
-	select {
-	case frame, ok := <-frameBuffer:
-		if !ok {
-			os.Exit(0)
-		}
-
-		if frame != nil {
-			view = frame
-		}
-
-	default:
-	}
-	return nil
-}
-
-func (g *Game) Draw(screen *ebiten.Image) {
-	screen.DrawImage(view, &ebiten.DrawImageOptions{})
-}
-
-func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
-	return WindowWidth, WindowHeight
-}
+var fileCount int = 0
 
 func main() {
-	WindowWidth = 1280
-	WindowHeight = 720
+	var (
+		srcFileName string
+		swsctx      *gmf.SwsCtx
+	)
 
-	ebiten.SetWindowSize(WindowWidth, WindowHeight)
-	ebiten.SetWindowTitle("Hello, World!")
-	ebiten.SetMaxTPS(60)
+	flag.StringVar(&srcFileName, "src", "tests-sample.mp4", "source video")
+	flag.Parse()
 
-	view = ebiten.NewImage(WindowWidth, WindowHeight)
-	frameBuffer = readVideoFrames(os.Args[1])
-	if err := ebiten.RunGame(&Game{}); err != nil {
+	os.MkdirAll("./tmp", 0755)
+
+	inputCtx, err := gmf.NewInputCtx(srcFileName)
+	if err != nil {
+		log.Fatalf("Error creating context - %s\n", err)
+	}
+	defer inputCtx.Free()
+
+	srcVideoStream, err := inputCtx.GetBestStream(gmf.AVMEDIA_TYPE_VIDEO)
+	if err != nil {
+		log.Printf("No video stream found in '%s'\n", srcFileName)
+		return
+	}
+
+	codec, err := gmf.FindEncoder(gmf.AV_CODEC_ID_RAWVIDEO)
+	if err != nil {
+		log.Fatalf("%s\n", err)
+	}
+
+	cc := gmf.NewCodecCtx(codec)
+	defer gmf.Release(cc)
+
+	cc.SetTimeBase(gmf.AVR{Num: 1, Den: 1})
+
+	cc.SetPixFmt(gmf.AV_PIX_FMT_RGBA).SetWidth(srcVideoStream.CodecCtx().Width()).SetHeight(srcVideoStream.CodecCtx().Height())
+	if codec.IsExperimental() {
+		cc.SetStrictCompliance(gmf.FF_COMPLIANCE_EXPERIMENTAL)
+	}
+
+	if err := cc.Open(nil); err != nil {
+		log.Fatal(err)
+	}
+	defer cc.Free()
+
+	ist, err := inputCtx.GetStream(srcVideoStream.Index())
+	if err != nil {
+		log.Fatalf("Error getting stream - %s\n", err)
+	}
+	defer ist.Free()
+
+	// convert source pix_fmt into AV_PIX_FMT_RGBA
+	// which is set up by codec context above
+	icc := srcVideoStream.CodecCtx()
+	if swsctx, err = gmf.NewSwsCtx(icc.Width(), icc.Height(), icc.PixFmt(), cc.Width(), cc.Height(), cc.PixFmt(), gmf.SWS_BICUBIC); err != nil {
+		panic(err)
+	}
+	defer swsctx.Free()
+
+	start := time.Now()
+
+	var (
+		pkt        *gmf.Packet
+		frames     []*gmf.Frame
+		drain      int = -1
+		frameCount int = 0
+	)
+
+	for {
+		if drain >= 0 {
+			break
+		}
+
+		pkt, err = inputCtx.GetNextPacket()
+		if err != nil && err != io.EOF {
+			if pkt != nil {
+				pkt.Free()
+			}
+			log.Printf("error getting next packet - %s", err)
+			break
+		} else if err != nil && pkt == nil {
+			drain = 0
+		}
+
+		if pkt != nil && pkt.StreamIndex() != srcVideoStream.Index() {
+			continue
+		}
+
+		frames, err = ist.CodecCtx().Decode(pkt)
+		if err != nil {
+			log.Printf("Fatal error during decoding - %s\n", err)
+			break
+		}
+
+		// Decode() method doesn't treat EAGAIN and EOF as errors
+		// it returns empty frames slice instead. Countinue until
+		// input EOF or frames received.
+		if len(frames) == 0 && drain < 0 {
+			continue
+		}
+
+		if frames, err = gmf.DefaultRescaler(swsctx, frames); err != nil {
+			panic(err)
+		}
+
+		encode(cc, frames, drain)
+
+		for i, _ := range frames {
+			frames[i].Free()
+			frameCount++
+		}
+
+		if pkt != nil {
+			pkt.Free()
+			pkt = nil
+		}
+	}
+
+	for i := 0; i < inputCtx.StreamsCnt(); i++ {
+		st, _ := inputCtx.GetStream(i)
+		st.CodecCtx().Free()
+		st.Free()
+	}
+
+	since := time.Since(start)
+	log.Printf("Finished in %v, avg %.2f fps", since, float64(frameCount)/since.Seconds())
+}
+
+func encode(cc *gmf.CodecCtx, frames []*gmf.Frame, drain int) {
+	packets, err := cc.Encode(frames, drain)
+	if err != nil {
+		log.Fatalf("Error encoding - %s\n", err)
+	}
+	if len(packets) == 0 {
+		return
+	}
+
+	for _, p := range packets {
+		width, height := cc.Width(), cc.Height()
+
+		img := new(image.RGBA)
+		img.Pix = p.Data()
+		img.Stride = 4 * width
+		img.Rect = image.Rect(0, 0, width, height)
+
+		writeFile(img)
+
+		p.Free()
+	}
+
+	return
+}
+
+func writeFile(b image.Image) {
+	name := fmt.Sprintf("tmp/%d.jpg", fileCount)
+	fp, err := os.OpenFile(name, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("Error opening file '%s' - %s\n", name, err)
+	}
+	defer fp.Close()
+
+	fileCount++
+
+	log.Printf("Saving file %s\n", name)
+
+	if err = jpeg.Encode(fp, b, &jpeg.Options{Quality: 80}); err != nil {
 		log.Fatal(err)
 	}
 }
