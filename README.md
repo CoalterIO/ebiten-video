@@ -1,5 +1,5 @@
 # ebiten-video
-a proof-of-concept video player for ebiten
+a proof-of-concept video player for ebiten that DOESN'T require ffmpeg
 
 # information
 this library takes a png sequence (generated from something like Adobe After Effects/Premier) and outputs a video-like sequence to an ebiten screen
