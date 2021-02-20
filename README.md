@@ -14,14 +14,23 @@ ie. video/video001.png
 
 -secondly, add the local path to the png sequence (ie. video/video001.png)
 ```go
-const filename = "video"
+const (
+	filename = "video"
+)
+```
+
+-ALTERNATIVELY: embed the folder containing the png sequence as a filesystem
+```go
+//embed:go video/*
+var filesystem embed.FS
 ```
 
 -thirdly, initialize the sequence AFTER the game begins running (if you initialize in init() or main() then an opengl error might occur)
 ```go
 const (
-    x = 1280 //screen width
-    y = 720 //screen height
+	x = 1280 //screen width
+	y = 720 //screen height
+	prefix = "video"
 )
 
 func main() {
@@ -36,7 +45,10 @@ func main() {
 }
 
 func initializeVideo() {
-	sequence = video.NewSequence(filename, 436, x, y, content)
+	sequence, err = video.NewSequenceFromFolder(prefix, location, totalFrames, x, y)
+	// Or, if using the embedded filesystem
+	// sequence, err = video.NewSequenceFromFS(prefix, content, totalFrames, x, y)
+	// handle error...
 }
 ```
 
@@ -44,7 +56,7 @@ func initializeVideo() {
 ```go
 func (g *Game) Update() error {
 	if sequence != nil {
-		video.UpdateSequence(sequence, 30, 60)
+		video.UpdateSequence(sequence, desiredVideoFps, yourTickRate)
 	}
 	return nil
 }
@@ -62,5 +74,6 @@ you can run the initialization as a goroutine if you need to do something else w
 
 # TODO
 sound
+
 video scaling
 
