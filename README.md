@@ -31,7 +31,11 @@ const (
 	x = 1280 //screen width
 	y = 720 //screen height
 	prefix = "video"
+	totalFrames = 100
 )
+
+//embed:go video/*
+var filesystem embed.FS
 
 func main() {
 	ebiten.SetWindowSize(x, y)
@@ -47,7 +51,7 @@ func main() {
 func initializeVideo() {
 	sequence, err = video.NewSequenceFromFolder(prefix, location, totalFrames, x, y)
 	// Or, if using the embedded filesystem
-	// sequence, err = video.NewSequenceFromFS(prefix, content, totalFrames, x, y)
+	sequenceFS, err = video.NewSequenceFromFS(prefix, filesystem, totalFrames, x, y)
 	// handle error...
 }
 ```
