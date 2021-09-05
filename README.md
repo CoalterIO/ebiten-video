@@ -15,7 +15,7 @@ ie. video/video001.png
 -secondly, add the local path to the png sequence (ie. video/video001.png)
 ```go
 const (
-	filename = "video"
+	prefix = "video"
 )
 ```
 
